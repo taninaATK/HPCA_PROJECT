@@ -7,7 +7,7 @@
 #define r 0.1f
 #define N 3			// Size of the problem's matrix
 #define NB 2		// Number of blocks
-#define NTPB 3		// Number of threads per block
+#define NTPB 10		// Number of threads per block
 #define MIN 1
 #define MAX 10
 
@@ -169,8 +169,8 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int* z, int n){
 	int *zGPU;
 
 	// Allocation des vecteurs dans la mémoire GPU
-	testCUDA(cudaMalloc(&aGPU, NB*n*sizeof(float)));  	//sa
-	testCUDA(cudaMalloc(&cGPU, NB*n*sizeof(float)));  	//sc
+	testCUDA(cudaMalloc(&aGPU, NB*n*sizeof(float)));  		//sa
+	testCUDA(cudaMalloc(&cGPU, NB*n*sizeof(float)));  		//sc
 	testCUDA(cudaMalloc(&bGPU, NB*n*sizeof(float)));		//sd
 	testCUDA(cudaMalloc(&yGPU, NB*n*sizeof(float)));		//sy (contains the solution after calling PCR_d)
 	testCUDA(cudaMalloc(&zGPU, NB*n*sizeof(int)));			//sl
@@ -227,10 +227,10 @@ int main(void){
 	printVect(y, n);
 
 	//Test Thomas
-	Thomas_wrap(a, b, c, y, z, n);
+	//Thomas_wrap(a, b, c, y, z, n);
 
 	//Test PCR
-	//PCR_wrap(a, b, c, y, pcr_z, n);
+	PCR_wrap(a, b, c, y, pcr_z, n);
 
 	// Libération des vecteurs sur RAM
 	free(a);
