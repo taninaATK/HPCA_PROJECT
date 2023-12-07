@@ -6,8 +6,8 @@
 #define EPS 0.0000001f
 #define r 0.1f
 #define N 3			// Size of the problem's matrix
-#define NB 2		// Number of blocks
-#define NTPB 10		// Number of threads per block
+#define NB 4 		// Number of blocks
+#define NTPB 3		// Number of threads per block
 #define MIN 1
 #define MAX 10
 
@@ -102,11 +102,34 @@ __device__ void PCR_d(float* sa, float* sd, float* sc, float* sy, int* sl, int n
 }
 
 __global__ void PCR(float* sa, float* sd, float* sc, float* sy, int* sl, int n){
-	for (int i = 0; i <= n; i++) {
-		sl[threadIdx.x] = threadIdx.x;
+	
+	/* Allocating space in the shared memomry because accesses to the 
+	 * shared memory are faster than  accesses to the global memory */
+	extern __shared__ float tab[];
+	float* ssa = tab;
+	float* ssd = ssa + NTPB;
+	float* ssc = ssd + NTPB;
+	float* ssy = ssc + NTPB;
+	int* ssl = (int*)(ssy + NTPB);
+
+	/* Actually copying the values to the shared memory */
+	for (int i = 0; i < n; i++){	
+		ssa[threadIdx.x] = sa[threadIdx.x + blockIdx.x*blockDim.x];
+		ssd[threadIdx.x] = sd[threadIdx.x + blockIdx.x*blockDim.x];
+		ssc[threadIdx.x] = sc[threadIdx.x + blockIdx.x*blockDim.x];
+		ssy[threadIdx.x] = sy[threadIdx.x + blockIdx.x*blockDim.x];
+		ssl[threadIdx.x] = threadIdx.x;
 	}
 	__syncthreads();
-	PCR_d(sa, sd, sc, sy, sl, n);
+	PCR_d(ssa, ssd, ssc, ssy, ssl, n);
+
+	/* Here we need to copy the result in global memory so that 
+	 * the host can access it later on outside of the kernel
+	 * (reminder : shared memory doesn't exist outside of a block)*/
+	for(int i = 0; i < n; i++){
+		sy[threadIdx.x + blockIdx.x*blockDim.x] = ssy[threadIdx.x];
+	}
+	__syncthreads();
 }
 
 /*
@@ -128,6 +151,8 @@ __global__ void Thomas(float* aGPU, float* bGPU, float* cGPU, float* yGPU, float
 		zGPU[i + n*idx] = yGPU[i + n*idx] - cGPU[i + (n-1)*idx] * zGPU[i+1 + n*idx];
 	}
 }
+
+__global__ void PDE_1(){}
 
 void Thomas_wrap(float* a, float* b, float* c, float* y, float* z, int n){
 	// Déclaration des variables utilisées
@@ -164,6 +189,7 @@ void Thomas_wrap(float* a, float* b, float* c, float* y, float* z, int n){
 }
 
 void PCR_wrap(float* a, float* b, float* c, float* y, int* z, int n){
+	
 	// Déclaration des variables utilisées
 	float *aGPU, *bGPU, *cGPU, *yGPU;
 	int *zGPU;
@@ -182,8 +208,9 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int* z, int n){
 		testCUDA(cudaMemcpy(cGPU + i*n, c, n*sizeof(float), cudaMemcpyHostToDevice));
 		testCUDA(cudaMemcpy(yGPU + i*n, y, n*sizeof(float), cudaMemcpyHostToDevice));
 	}
+	
 
-	PCR<<<NB, NTPB>>>(aGPU, bGPU, cGPU, yGPU, zGPU, n);
+	PCR<<<NB, NTPB, 6*NTPB*sizeof(float)>>>(aGPU, bGPU, cGPU, yGPU, zGPU, n);
 
 	for(int i = 0; i < NB; i++){
 		testCUDA(cudaMemcpy(y, yGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));	// !!! SOLUTION IN yGPU !!!
@@ -198,9 +225,33 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int* z, int n){
 	testCUDA(cudaFree(zGPU));
 }
 
+void PDE_1_wrap(int M, int P1, int P2){
+	/*
+	int i;
+
+	// threadIdx.x = le i dans la formule d'induction de Crank-Nicolson
+	int u = threadIdx.x + 1;											
+	int m = threadIdx.x;
+	int d = threadIdx.x - 1;
+
+	//Constants used in the computation
+    float sig = sigmin + dsig*blockIdx.x;
+	float mu = r - 0.5f*sig*sig;										//CHECKED
+	float pu = 0.25f*(sig*sig*dt/(dx*dx) + mu*dt/dx);					//CHECKED
+	float pm = 1.0f - 0.5*sig*sig*dt/(dx*dx);							//CHECKED
+	float pd = 0.25f*(sig*sig*dt/(dx*dx) - mu*dt/dx);					//CHECKED
+	float qu = -0.25f * (sig * sig * dt / (dx * dx) + mu * dt / dx);	//CHECKED
+	float qm = 1.0f + 0.5 * sig * sig * dt / (dx * dx);					//CHECKED
+	float qd = -0.25f * (sig * sig * dt / (dx * dx) - mu * dt / dx);	//CHECKED
+	*/
+}
+
 int main(void){
 	int n = N;
 
+	/***********************************
+	************ QUESTION 1 ************
+	************************************/
 	float *a, *b, *c, *y, *z;
 	int *pcr_z;
 
@@ -227,7 +278,7 @@ int main(void){
 	printVect(y, n);
 
 	//Test Thomas
-	//Thomas_wrap(a, b, c, y, z, n);
+	Thomas_wrap(a, b, c, y, z, n);
 
 	//Test PCR
 	PCR_wrap(a, b, c, y, pcr_z, n);
@@ -239,6 +290,20 @@ int main(void){
 	free(y);
 	free(z);
 	free(pcr_z);
+
+	/***********************************
+	******** END OF QUESTION 1 *********
+	************************************/
+
+	/***********************************
+	************ QUESTION 2 ************
+	************************************/
+
+	/***********************************
+	******** END OF QUESTION 2 *********
+	************************************/
+
+
 
 	return 0;
 }
