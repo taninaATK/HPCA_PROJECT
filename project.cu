@@ -111,25 +111,21 @@ __global__ void PCR(float* sa, float* sd, float* sc, float* sy, int n){
 	float* ssc = ssd + NTPB;
 	float* ssy = ssc + NTPB;
 	int* ssl = (int*)(ssy + NTPB);
+	ssa[threadIdx.x] = sa[threadIdx.x + blockIdx.x*blockDim.x];
+	ssd[threadIdx.x] = sd[threadIdx.x + blockIdx.x*blockDim.x];
+	ssc[threadIdx.x] = sc[threadIdx.x + blockIdx.x*blockDim.x];
+	ssy[threadIdx.x] = sy[threadIdx.x + blockIdx.x*blockDim.x];
+	ssl[threadIdx.x] = threadIdx.x;
 
-	/* Actually copying the values to the shared memory */
-	for (int i = 0; i < n; i++){	
-		ssa[threadIdx.x] = sa[threadIdx.x + blockIdx.x*blockDim.x];
-		ssd[threadIdx.x] = sd[threadIdx.x + blockIdx.x*blockDim.x];
-		ssc[threadIdx.x] = sc[threadIdx.x + blockIdx.x*blockDim.x];
-		ssy[threadIdx.x] = sy[threadIdx.x + blockIdx.x*blockDim.x];
-		ssl[threadIdx.x] = threadIdx.x;
-	}
+	/* making sure the values are all set before beginning the computation*/
 	__syncthreads();
+
 	PCR_d(ssa, ssd, ssc, ssy, ssl, n);
 
 	/* Here we need to copy the result in global memory so that 
 	 * the host can access it later on outside of the kernel
 	 * (reminder : shared memory doesn't exist outside of a block)*/
-	for(int i = 0; i < n; i++){
-		sy[threadIdx.x + blockIdx.x*blockDim.x] = ssy[threadIdx.x];
-	}
-	__syncthreads();
+	sy[threadIdx.x + blockIdx.x*blockDim.x] = ssy[threadIdx.x];
 }
 
 /*
