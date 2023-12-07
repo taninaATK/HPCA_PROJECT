@@ -174,6 +174,7 @@ void Thomas_wrap(float* a, float* b, float* c, float* y, float* z, int n){
 	}
 
 	Thomas<<<NB, NTPB>>>(aGPU, bGPU, cGPU, yGPU, zGPU, n);
+	cudaDeviceSynchronize();
 
 	for(int i = 0; i < NB*NTPB; i++){
 		testCUDA(cudaMemcpy(z, zGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));
@@ -208,7 +209,8 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int n){
 	}
 	
 
-	PCR<<<NB, NTPB, 6*NTPB*sizeof(float)>>>(aGPU, bGPU, cGPU, yGPU, n);
+	PCR<<<NB, NTPB, 5*NTPB*sizeof(float)>>>(aGPU, bGPU, cGPU, yGPU, n);
+	cudaDeviceSynchronize();
 
 	for(int i = 0; i < NB; i++){
 		testCUDA(cudaMemcpy(y, yGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));	// !!! SOLUTION IN yGPU !!!
@@ -220,7 +222,7 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int n){
 	testCUDA(cudaFree(bGPU));
 	testCUDA(cudaFree(cGPU));
 	testCUDA(cudaFree(yGPU));
-	}
+}
 
 void PDE_1_wrap(int M, int P1, int P2){
 	/*
