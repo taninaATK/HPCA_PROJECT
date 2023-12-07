@@ -101,7 +101,7 @@ __device__ void PCR_d(float* sa, float* sd, float* sc, float* sy, int* sl, int n
 	sy[(int)sl[threadIdx.x]] = yL / dL;
 }
 
-__global__ void PCR(float* sa, float* sd, float* sc, float* sy, int* sl, int n){
+__global__ void PCR(float* sa, float* sd, float* sc, float* sy, int n){
 	
 	/* Allocating space in the shared memomry because accesses to the 
 	 * shared memory are faster than  accesses to the global memory */
@@ -188,18 +188,16 @@ void Thomas_wrap(float* a, float* b, float* c, float* y, float* z, int n){
 	testCUDA(cudaFree(zGPU));
 }
 
-void PCR_wrap(float* a, float* b, float* c, float* y, int* z, int n){
+void PCR_wrap(float* a, float* b, float* c, float* y, int n){
 	
 	// Déclaration des variables utilisées
 	float *aGPU, *bGPU, *cGPU, *yGPU;
-	int *zGPU;
 
 	// Allocation des vecteurs dans la mémoire GPU
 	testCUDA(cudaMalloc(&aGPU, NB*n*sizeof(float)));  		//sa
 	testCUDA(cudaMalloc(&cGPU, NB*n*sizeof(float)));  		//sc
 	testCUDA(cudaMalloc(&bGPU, NB*n*sizeof(float)));		//sd
 	testCUDA(cudaMalloc(&yGPU, NB*n*sizeof(float)));		//sy (contains the solution after calling PCR_d)
-	testCUDA(cudaMalloc(&zGPU, NB*n*sizeof(int)));			//sl
 
 	// Copie des données dans les vecteurs sur GPU pour chaque block
 	for(int i = 0; i < NB; i++){
@@ -210,7 +208,7 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int* z, int n){
 	}
 	
 
-	PCR<<<NB, NTPB, 6*NTPB*sizeof(float)>>>(aGPU, bGPU, cGPU, yGPU, zGPU, n);
+	PCR<<<NB, NTPB, 6*NTPB*sizeof(float)>>>(aGPU, bGPU, cGPU, yGPU, n);
 
 	for(int i = 0; i < NB; i++){
 		testCUDA(cudaMemcpy(y, yGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));	// !!! SOLUTION IN yGPU !!!
@@ -222,8 +220,7 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int* z, int n){
 	testCUDA(cudaFree(bGPU));
 	testCUDA(cudaFree(cGPU));
 	testCUDA(cudaFree(yGPU));
-	testCUDA(cudaFree(zGPU));
-}
+	}
 
 void PDE_1_wrap(int M, int P1, int P2){
 	/*
@@ -253,7 +250,6 @@ int main(void){
 	************ QUESTION 1 ************
 	************************************/
 	float *a, *b, *c, *y, *z;
-	int *pcr_z;
 
 	// Allocation des vecteurs pour initialisation du système
 	a = (float *) malloc(n* sizeof(float) );
@@ -261,7 +257,6 @@ int main(void){
 	c = (float *) malloc(n * sizeof(float) );
 	y = (float *) malloc(n * sizeof(float) );
 	z = (float *) malloc(n * sizeof(float) );
-	pcr_z = (int *) malloc(n * sizeof(int) );
 
 	iniTest(a, b, c, y, n);
 
@@ -281,7 +276,7 @@ int main(void){
 	Thomas_wrap(a, b, c, y, z, n);
 
 	//Test PCR
-	PCR_wrap(a, b, c, y, pcr_z, n);
+	PCR_wrap(a, b, c, y, n);
 
 	// Libération des vecteurs sur RAM
 	free(a);
@@ -289,7 +284,6 @@ int main(void){
 	free(c);
 	free(y);
 	free(z);
-	free(pcr_z);
 
 	/***********************************
 	******** END OF QUESTION 1 *********
