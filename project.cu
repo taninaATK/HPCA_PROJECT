@@ -2,14 +2,22 @@
 #include <math.h>
 #include <time.h>
 
-//A TRIER
-#define EPS 0.0000001f
-#define r 0.1f
+// Variables pour toutes les questions
 #define N 3			// Size of the problem's matrix
 #define NB 4 		// Number of blocks
 #define NTPB 3		// Number of threads per block
+
+// Used to generate random matrices for tests
 #define MIN 1
 #define MAX 10
+
+// Pour la question 2
+#define EPS 0.0000001f
+#define r 0.1f
+#define B 120
+#define M 100
+#define P1 10
+#define P2 50
 
 void printVect(float *v, int n){
 	for(int i = 0; i < n; i++){
@@ -128,64 +136,15 @@ __global__ void PCR(float* sa, float* sd, float* sc, float* sy, int n){
 	sy[threadIdx.x + blockIdx.x*blockDim.x] = ssy[threadIdx.x];
 }
 
-/*
-*/
-__global__ void Thomas(float* aGPU, float* bGPU, float* cGPU, float* yGPU, float* zGPU, int n){
-	int idx = threadIdx.x + blockIdx.x*blockDim.x;
-	//Forward step
-	cGPU[(n-1)*idx] = cGPU[(n-1)*idx]/bGPU[n*idx];
-	yGPU[n*idx] = yGPU[n*idx]/bGPU[n*idx];
-
-	for(int i = 1; i < n; i++){
-		if(i < n-1) cGPU[i + (n-1)*idx] = cGPU[i + (n-1)*idx]/(bGPU[i + n*idx] - aGPU[i - 1 + (n-1)*idx]*cGPU[i-1 + (n-1)*idx]);
-		yGPU[i + n*idx] = (yGPU[i + n*idx] - aGPU[i - 1 + (n-1)*idx]*yGPU[i - 1 + n*idx])/(bGPU[i + n*idx] - aGPU[i - 1+ (n-1)*idx]*cGPU[i - 1 + (n-1)*idx]);
-	}
-
-	//Backward step
-	zGPU[n-1 + n*idx] = yGPU[n-1 + n*idx];
-	for(int i = n-2; i >= 0; i--){
-		zGPU[i + n*idx] = yGPU[i + n*idx] - cGPU[i + (n-1)*idx] * zGPU[i+1 + n*idx];
-	}
-}
-
-__global__ void PDE_1(){}
-
-void Thomas_wrap(float* a, float* b, float* c, float* y, float* z, int n){
-	// Déclaration des variables utilisées
-	float *aGPU, *bGPU, *cGPU, *yGPU, *zGPU;
-
-	// Allocation des vecteurs dans la mémoire GPU
-	testCUDA(cudaMalloc(&aGPU, NB*NTPB*(n-1)*sizeof(float)));
-	testCUDA(cudaMalloc(&cGPU, NB*NTPB*(n-1)*sizeof(float)));
-	testCUDA(cudaMalloc(&bGPU, NB*NTPB*n*sizeof(float)));
-	testCUDA(cudaMalloc(&yGPU, NB*NTPB*n*sizeof(float)));
-	testCUDA(cudaMalloc(&zGPU, NB*NTPB*n*sizeof(float)));
-
-	// Copie des données dans les vecteurs sur GPU pour chaque block
-	for(int i = 0; i < NB*NTPB; i++){
-		testCUDA(cudaMemcpy(aGPU + i*(n-1), &(a[1]), (n-1)*sizeof(float), cudaMemcpyHostToDevice));
-		testCUDA(cudaMemcpy(bGPU + i*n, b, n*sizeof(float), cudaMemcpyHostToDevice));
-		testCUDA(cudaMemcpy(cGPU + i*(n-1), &(c[1]), (n-1)*sizeof(float), cudaMemcpyHostToDevice));
-		testCUDA(cudaMemcpy(yGPU + i*n, y, n*sizeof(float), cudaMemcpyHostToDevice));
-	}
-
-	Thomas<<<NB, NTPB>>>(aGPU, bGPU, cGPU, yGPU, zGPU, n);
-	cudaDeviceSynchronize();
-
-	for(int i = 0; i < NB*NTPB; i++){
-		testCUDA(cudaMemcpy(z, zGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));
-		printVect(z, n);
-	}
-
-	// Libération des vecteurs GPU
-	testCUDA(cudaFree(aGPU));
-	testCUDA(cudaFree(bGPU));
-	testCUDA(cudaFree(cGPU));
-	testCUDA(cudaFree(yGPU));
-	testCUDA(cudaFree(zGPU));
-}
-
 void PCR_wrap(float* a, float* b, float* c, float* y, int n){
+
+	// Pour les tests
+	float TimeExec;									// GPU timer instructions
+	cudaEvent_t start, stop;						// GPU timer instructions
+	testCUDA(cudaEventCreate(&start));				// GPU timer instructions
+	testCUDA(cudaEventCreate(&stop));				// GPU timer instructions
+	testCUDA(cudaEventRecord(start,0));				// GPU timer instructions
+
 	
 	// Déclaration des variables utilisées
 	float *aGPU, *bGPU, *cGPU, *yGPU;
@@ -208,10 +167,21 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int n){
 	PCR<<<NB, NTPB, 5*NTPB*sizeof(float)>>>(aGPU, bGPU, cGPU, yGPU, n);
 	cudaDeviceSynchronize();
 
+	// Temps
+	testCUDA(cudaEventRecord(stop,0));				// GPU timer instructions
+	testCUDA(cudaEventSynchronize(stop));			// GPU timer instructions
+	testCUDA(cudaEventElapsedTime(&TimeExec, start, stop));							// GPU timer instructions
+	testCUDA(cudaEventDestroy(start));				// GPU timer instructions
+	testCUDA(cudaEventDestroy(stop));				// GPU timer instructions
+
+	printf("GPU time execution for PCR: %f ms\n", TimeExec);
+
+	/*
 	for(int i = 0; i < NB; i++){
 		testCUDA(cudaMemcpy(y, yGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));	// !!! SOLUTION IN yGPU !!!
 		printVect(y, n);
 	}
+	*/
 
 	// Libération des vecteurs GPU
 	testCUDA(cudaFree(aGPU));
@@ -220,10 +190,79 @@ void PCR_wrap(float* a, float* b, float* c, float* y, int n){
 	testCUDA(cudaFree(yGPU));
 }
 
-void PDE_1_wrap(int M, int P1, int P2){
-	/*
-	int i;
+__global__ void Thomas(float* aGPU, float* bGPU, float* cGPU, float* yGPU, float* zGPU, int n){
+	int idx = threadIdx.x + blockIdx.x*blockDim.x;
+	//Forward step
+	cGPU[(n-1)*idx] = cGPU[(n-1)*idx]/bGPU[n*idx];
+	yGPU[n*idx] = yGPU[n*idx]/bGPU[n*idx];
 
+	for(int i = 1; i < n; i++){
+		if(i < n-1) cGPU[i + (n-1)*idx] = cGPU[i + (n-1)*idx]/(bGPU[i + n*idx] - aGPU[i - 1 + (n-1)*idx]*cGPU[i-1 + (n-1)*idx]);
+		yGPU[i + n*idx] = (yGPU[i + n*idx] - aGPU[i - 1 + (n-1)*idx]*yGPU[i - 1 + n*idx])/(bGPU[i + n*idx] - aGPU[i - 1+ (n-1)*idx]*cGPU[i - 1 + (n-1)*idx]);
+	}
+
+	//Backward step
+	zGPU[n-1 + n*idx] = yGPU[n-1 + n*idx];
+	for(int i = n-2; i >= 0; i--){
+		zGPU[i + n*idx] = yGPU[i + n*idx] - cGPU[i + (n-1)*idx] * zGPU[i+1 + n*idx];
+	}
+}
+
+void Thomas_wrap(float* a, float* b, float* c, float* y, float* z, int n){
+
+	// Pour les tests
+	float TimeExec;									// GPU timer instructions
+	cudaEvent_t start, stop;						// GPU timer instructions
+	testCUDA(cudaEventCreate(&start));				// GPU timer instructions
+	testCUDA(cudaEventCreate(&stop));				// GPU timer instructions
+	testCUDA(cudaEventRecord(start,0));				// GPU timer instructions
+
+	// Déclaration des variables utilisées
+	float *aGPU, *bGPU, *cGPU, *yGPU, *zGPU;
+
+	// Allocation des vecteurs dans la mémoire GPU
+	testCUDA(cudaMalloc(&aGPU, NB*NTPB*(n-1)*sizeof(float)));
+	testCUDA(cudaMalloc(&cGPU, NB*NTPB*(n-1)*sizeof(float)));
+	testCUDA(cudaMalloc(&bGPU, NB*NTPB*n*sizeof(float)));
+	testCUDA(cudaMalloc(&yGPU, NB*NTPB*n*sizeof(float)));
+	testCUDA(cudaMalloc(&zGPU, NB*NTPB*n*sizeof(float)));
+
+	// Copie des données dans les vecteurs sur GPU pour chaque block
+	for(int i = 0; i < NB*NTPB; i++){
+		testCUDA(cudaMemcpy(aGPU + i*(n-1), &(a[1]), (n-1)*sizeof(float), cudaMemcpyHostToDevice));
+		testCUDA(cudaMemcpy(bGPU + i*n, b, n*sizeof(float), cudaMemcpyHostToDevice));
+		testCUDA(cudaMemcpy(cGPU + i*(n-1), &(c[1]), (n-1)*sizeof(float), cudaMemcpyHostToDevice));
+		testCUDA(cudaMemcpy(yGPU + i*n, y, n*sizeof(float), cudaMemcpyHostToDevice));
+	}
+
+	Thomas<<<NB, NTPB>>>(aGPU, bGPU, cGPU, yGPU, zGPU, n);
+	cudaDeviceSynchronize();
+
+	// Temps
+	testCUDA(cudaEventRecord(stop,0));				// GPU timer instructions
+	testCUDA(cudaEventSynchronize(stop));			// GPU timer instructions
+	testCUDA(cudaEventElapsedTime(&TimeExec, start, stop));							// GPU timer instructions
+	testCUDA(cudaEventDestroy(start));				// GPU timer instructions
+	testCUDA(cudaEventDestroy(stop));				// GPU timer instructions
+
+	printf("GPU time execution for Thomas : %f ms\n", TimeExec);
+
+	/*
+	for(int i = 0; i < NB*NTPB; i++){
+		testCUDA(cudaMemcpy(z, zGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));
+		printVect(z, n);
+	}
+	*/
+
+	// Libération des vecteurs GPU
+	testCUDA(cudaFree(aGPU));
+	testCUDA(cudaFree(bGPU));
+	testCUDA(cudaFree(cGPU));
+	testCUDA(cudaFree(yGPU));
+	testCUDA(cudaFree(zGPU));
+}
+
+__global__ void PDE_1(float x, float j){
 	// threadIdx.x = le i dans la formule d'induction de Crank-Nicolson
 	int u = threadIdx.x + 1;											
 	int m = threadIdx.x;
@@ -238,8 +277,10 @@ void PDE_1_wrap(int M, int P1, int P2){
 	float qu = -0.25f * (sig * sig * dt / (dx * dx) + mu * dt / dx);	//CHECKED
 	float qm = 1.0f + 0.5 * sig * sig * dt / (dx * dx);					//CHECKED
 	float qd = -0.25f * (sig * sig * dt / (dx * dx) - mu * dt / dx);	//CHECKED
-	*/
+
 }
+
+void PDE_1_wrap(){}
 
 int main(void){
 	int n = N;
@@ -261,14 +302,14 @@ int main(void){
 	a[0] = 0.f;
 	c[0] = 0.f;
 
-	printf("Vecteur a :\n");
-	printVect(a, n);
-	printf("Vecteur b :\n");
-	printVect(b, n);
-	printf("Vecteur c :\n");
-	printVect(c, n);
-	printf("Vecteur y :\n");
-	printVect(y, n);
+	// printf("Vecteur a :\n");
+	// printVect(a, n);
+	// printf("Vecteur b :\n");
+	// printVect(b, n);
+	// printf("Vecteur c :\n");
+	// printVect(c, n);
+	// printf("Vecteur y :\n");
+	// printVect(y, n);
 
 	//Test Thomas
 	Thomas_wrap(a, b, c, y, z, n);
