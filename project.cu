@@ -207,7 +207,7 @@ __global__ void PCR(float *sa, float *sd, float *sc, float *sy, int n)
 	sy[threadIdx.x + blockIdx.x * blockDim.x] = ssy[threadIdx.x];
 }
 
-void PCR_wrap(float *a, float *b, float *c, float *y, int n)
+void PCR_wrap(float *a, float *b, float *c, float *y, float *z, int n)
 {
 
 	// Pour les tests
@@ -247,12 +247,11 @@ void PCR_wrap(float *a, float *b, float *c, float *y, int n)
 
 	printf("GPU time execution for PCR: %f ms\n", TimeExec);
 
-	/*
-	for(int i = 0; i < NB; i++){
-		testCUDA(cudaMemcpy(y, yGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));	// !!! SOLUTION IN yGPU !!!
-		printVect(y, n);
+	for (int i = 0; i < NB; i++)
+	{
+		testCUDA(cudaMemcpy(z, yGPU + i * n, n * sizeof(float), cudaMemcpyDeviceToHost)); // !!! SOLUTION IN yGPU !!!
+		// printVect(z, n);
 	}
-	*/
 
 	// Libération des vecteurs GPU
 	testCUDA(cudaFree(aGPU));
@@ -324,12 +323,11 @@ void Thomas_wrap(float *a, float *b, float *c, float *y, float *z, int n)
 
 	printf("GPU time execution for Thomas : %f ms\n", TimeExec);
 
-	/*
-	for(int i = 0; i < NB*NTPB; i++){
-		testCUDA(cudaMemcpy(z, zGPU + i*n, n*sizeof(float), cudaMemcpyDeviceToHost));
-		printVect(z, n);
+	for (int i = 0; i < NB * NTPB; i++)
+	{
+		testCUDA(cudaMemcpy(z, zGPU + i * n, n * sizeof(float), cudaMemcpyDeviceToHost));
+		// printVect(z, n);
 	}
-	*/
 
 	// Libération des vecteurs GPU
 	testCUDA(cudaFree(aGPU));
@@ -541,7 +539,7 @@ void PDE_partial_wrap(float dt, float dx, float sig, float pmin, float pmax, MyT
 	testCUDA(cudaEventDestroy(stop));						// GPU timer instructions
 
 	printf("GPU time execution for partial PDE diffusion: %f ms\n", TimeExec);
-	printf("Time spent on the memCpy : %f ms\n", TimeCpy);
+	// printf("Time spent on the memCpy : %f ms\n", TimeCpy);
 
 	testCUDA(cudaFree(GPUTab));
 	testCUDA(cudaFree(GPUTabBackup));
@@ -616,11 +614,21 @@ int main(void)
 	// printf("Vecteur y :\n");
 	// printVect(y, n);
 
+	printf("\n\n############## THOMAS BENCHMARK ##############\n");
+
 	// Test Thomas
-	Thomas_wrap(a, b, c, y, z, n);
+	for (int count = 0; count < 10; count++)
+	{
+		Thomas_wrap(a, b, c, y, z, n);
+	}
+
+	printf("\n\n############## PCR BENCHMARK ##############\n");
 
 	// Test PCR
-	PCR_wrap(a, b, c, y, n);
+	for (int count = 0; count < 10; count++)
+	{
+		PCR_wrap(a, b, c, y, z, n);
+	}
 
 	// Libération des vecteurs sur RAM
 	free(a);
@@ -636,6 +644,8 @@ int main(void)
 	/***********************************
 	************ QUESTION 2 ************
 	************************************/
+
+	printf("\n\n############## PARTIAL PDE BENCHMARK ##############\n");
 
 	float dt = (float)T / N;
 	float xmin = log(K / 3);
@@ -679,7 +689,6 @@ int main(void)
 	// 	}
 	// 	printf("\n");
 	// }
-	// printf("\n");
 
 	// checkPartialPDE(pt_CPU, xmin, dx, sig, dt);
 
@@ -690,6 +699,8 @@ int main(void)
 	/***********************************
 	************ QUESTION 3 ************
 	************************************/
+
+	printf("\n\n############## PDE BENCHMARK ##############\n");
 
 	// Boucle pour le benchmark
 	for (int count = 0; count < 10; count++)
@@ -708,24 +719,24 @@ int main(void)
 					pt_CPU[0][i][j] = 0.0f;
 				}
 			}
-			PDE_wrap(dt, dx, sig, pmin, pmax, pt_CPU, xmin);
 		}
-
-		for (int i = 0; i <= P2; i++)
-		{
-			for (int j = 0; j < NTPB; j++)
-			{
-				printf("%f ", pt_CPU[0][i][j]);
-			}
-			printf("\n");
-		}
-
-		testCUDA(cudaFreeHost(pt_CPU));
-
-		/***********************************
-		******** END OF QUESTION 3 *********
-		************************************/
-
-		return 0;
+		PDE_wrap(dt, dx, sig, pmin, pmax, pt_CPU, xmin);
 	}
+
+	// for (int i = 0; i <= P2; i++)
+	// {
+	// 	for (int j = 0; j < NTPB; j++)
+	// 	{
+	// 		printf("%f ", pt_CPU[0][i][j]);
+	// 	}
+	// 	printf("\n");
+	// }
+
+	testCUDA(cudaFreeHost(pt_CPU));
+
+	/***********************************
+	******** END OF QUESTION 3 *********
+	************************************/
+
+	return 0;
 }
